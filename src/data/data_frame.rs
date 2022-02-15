@@ -1,5 +1,9 @@
-use core::fmt;
-use std::panic;
+use std::{
+    cmp::Ordering,
+    fmt::{self, Display},
+    hash::{Hash, Hasher},
+    panic,
+};
 
 pub struct DataFrame {
     schema: Schema,
@@ -27,15 +31,12 @@ impl DataFrame {
         &self.schema
     }
 
-    pub fn row(&self, i: usize) -> Option<&Row> {
-        self.rows.get(i)
-    }
-
-    pub fn rows(&self) -> &Vec<Row> {
-        &self.rows
+    pub fn row_pointers(&self) -> Vec<&Row> {
+        self.rows.iter().map(|row| row).collect()
     }
 }
 
+#[derive(Debug)]
 pub struct Row {
     values: Vec<AnyValue>,
 }
@@ -65,6 +66,16 @@ impl From<Vec<&str>> for Row {
     }
 }
 
+impl Display for Row {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "(").unwrap();
+        for value in &self.values {
+            write!(f, "{},", value).unwrap();
+        }
+        write!(f, ")")
+    }
+}
+
 #[derive(Debug)]
 pub struct Schema {
     fields: Vec<Field>,
@@ -81,6 +92,10 @@ impl Schema {
 
     pub fn get_field(&self, i: usize) -> Option<&Field> {
         self.fields.get(i)
+    }
+
+    pub fn get_field_by_name(&self, name: &String) -> Option<&Field> {
+        self.fields.iter().find(|field| field.name() == name)
     }
 }
 
@@ -102,6 +117,16 @@ impl From<&Vec<Vec<&str>>> for Schema {
             .collect();
 
         Schema::new(fields)
+    }
+}
+
+impl Display for Schema {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "(").unwrap();
+        for field in self.fields() {
+            write!(f, "{},", field.name()).unwrap();
+        }
+        write!(f, ")\n")
     }
 }
 
@@ -154,6 +179,28 @@ impl PartialEq for AnyValue {
     }
 }
 
+impl Ord for AnyValue {
+    fn cmp(&self, other: &Self) -> Ordering {
+        use AnyValue::*;
+        match (self, other) {
+            (Number(l), Number(r)) => l.partial_cmp(r).unwrap_or(Ordering::Equal), //yolo
+            (Utf8(l), Utf8(r)) => l.cmp(r),
+            _ => Ordering::Equal,
+        }
+    }
+}
+
+impl PartialOrd for AnyValue {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        use AnyValue::*;
+        match (self, other) {
+            (Number(l), Number(r)) => l.partial_cmp(r),
+            (Utf8(l), Utf8(r)) => Some(l.cmp(r)),
+            _ => None,
+        }
+    }
+}
+
 impl From<&str> for AnyValue {
     fn from(a: &str) -> Self {
         let as_string = String::from(a);
@@ -161,7 +208,29 @@ impl From<&str> for AnyValue {
 
         match as_num {
             Ok(num) => AnyValue::Number(num),
-            Err(e) => AnyValue::Utf8(as_string),
+            Err(_e) => AnyValue::Utf8(as_string),
+        }
+    }
+}
+
+impl Hash for AnyValue {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        use AnyValue::*;
+        match &self {
+            Utf8(v) => state.write(v.as_bytes()),
+            Number(_v) => panic!("Can't hash floats"),
+            Null => state.write_u64(u64::MAX / 2 + 135123),
+        }
+    }
+}
+
+impl Display for AnyValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use AnyValue::*;
+        match &self {
+            Utf8(v) => write!(f, "{}", v),
+            Number(v) => write!(f, "{}", v),
+            Null => write!(f, "null"),
         }
     }
 }
