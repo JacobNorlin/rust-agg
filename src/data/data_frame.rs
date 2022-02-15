@@ -31,7 +31,7 @@ impl DataFrame {
         self.rows.get(i)
     }
 
-    pub fn rows(&self) -> &Vec<Row> {
+    pub fn rows(&self) -> &[Row] {
         &self.rows
     }
 }
@@ -75,7 +75,7 @@ impl Schema {
         Schema { fields: fields }
     }
 
-    pub fn fields(&self) -> &Vec<Field> {
+    pub fn fields(&self) -> &[Field] {
         &self.fields
     }
 
